@@ -1,0 +1,12 @@
+# Default configuration for tts-tester.
+# Override any value via CLI flags.
+
+language_code: "en-US"
+voice_name: ""                # leave empty to use the API default for language_code
+encoding: "MP3"               # MP3 | LINEAR16 | OGG_OPUS | MULAW | ALAW
+speaking_rate: 1.0            # 0.25 – 4.0
+pitch: 0.0                    # -20.0 – 20.0 semitones
+volume_gain_db: 0.0           # -96.0 – 16.0 dB
+
+# Voice-list cache TTL in seconds (default 24 h)
+cache_ttl_seconds: 86400
