@@ -1,12 +1,35 @@
-"""Cross-platform audio playback helper."""
+"""Cross-platform audio playback helper (includes WSL support)."""
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _is_wsl() -> bool:
+    """Detect if we're running inside Windows Subsystem for Linux."""
+    try:
+        with open("/proc/version", encoding="utf-8") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def _wsl_to_windows_path(filepath: Path) -> str:
+    """Convert a Linux path to a Windows path using wslpath."""
+    try:
+        result = subprocess.run(
+            ["wslpath", "-w", str(filepath.resolve())],
+            capture_output=True, text=True, check=True,
+        )
+        return result.stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        # Fallback: manual conversion for /home → \\wsl$\ paths
+        return str(filepath.resolve())
 
 
 def play(filepath: Path) -> None:
@@ -15,8 +38,11 @@ def play(filepath: Path) -> None:
     Falls back to opening the file with the default handler or printing
     a manual command when no suitable player is found.
     """
-    system = platform.system()
+    if _is_wsl():
+        _play_wsl(filepath)
+        return
 
+    system = platform.system()
     if system == "Darwin":
         _try_run(["afplay", str(filepath)], filepath)
     elif system == "Linux":
@@ -28,6 +54,32 @@ def play(filepath: Path) -> None:
 
 
 # ── Platform helpers ─────────────────────────────────────────────────────────
+
+
+def _play_wsl(filepath: Path) -> None:
+    """Play audio from WSL by invoking Windows-side tools."""
+    win_path = _wsl_to_windows_path(filepath)
+
+    # Try powershell.exe (available in WSL by default)
+    if shutil.which("powershell.exe"):
+        ext = filepath.suffix.lower()
+        if ext == ".wav":
+            ps_cmd = f'(New-Object Media.SoundPlayer "{win_path}").PlaySync()'
+            _try_run(["powershell.exe", "-Command", ps_cmd], filepath)
+        else:
+            # Start with default Windows handler (non-blocking but works)
+            _try_run(
+                ["powershell.exe", "-Command", f'Start-Process "{win_path}"'],
+                filepath,
+            )
+        return
+
+    # Fallback: cmd.exe
+    if shutil.which("cmd.exe"):
+        _try_run(["cmd.exe", "/c", "start", "", win_path], filepath)
+        return
+
+    _fallback(filepath)
 
 
 def _play_linux(filepath: Path) -> None:
@@ -53,13 +105,11 @@ def _play_linux(filepath: Path) -> None:
 def _play_windows(filepath: Path) -> None:
     ext = filepath.suffix.lower()
     if ext == ".wav":
-        # PowerShell SoundPlayer works for WAV without extra deps
         ps_cmd = (
             f'(New-Object Media.SoundPlayer "{filepath}").PlaySync()'
         )
         _try_run(["powershell", "-Command", ps_cmd], filepath)
     else:
-        # 'start' opens with the default handler
         _try_run(["cmd", "/c", "start", "", str(filepath)], filepath)
 
 
@@ -68,7 +118,7 @@ def _play_windows(filepath: Path) -> None:
 
 def _try_run(cmd: list[str], filepath: Path) -> None:
     exe = cmd[0]
-    if not shutil.which(exe) and exe not in ("cmd", "powershell"):
+    if not shutil.which(exe) and exe not in ("cmd", "cmd.exe", "powershell", "powershell.exe"):
         _fallback(filepath)
         return
     try:
