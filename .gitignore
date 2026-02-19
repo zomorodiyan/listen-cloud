@@ -1,0 +1,27 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Generated audio
+outputs/*.mp3
+outputs/*.wav
+outputs/*.ogg
+
+# Voice cache
+.cache/
+
+# Service-account keys – NEVER commit
+*.json
+!package.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
